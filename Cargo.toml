@@ -1,0 +1,121 @@
+[package]
+name = "cadical-rs"
+version = "3.0.1"
+edition = "2021"
+description = "A faithful Rust port of the CaDiCaL SAT solver (3.0.1): same search, same results, with a Rust API"
+license = "MIT"
+readme = "README.md"
+keywords = ["sat", "sat-solver", "cadical", "solver", "logic"]
+categories = ["algorithms", "mathematics", "science", "command-line-utilities"]
+autobins = false
+# The C++ reference checkout, build outputs and local tooling are not part
+# of the package.
+exclude = ["/cadical", "/target", "/result", "/.envrc", "/.github", "/.direnv"]
+
+[lib]
+name = "cadical"
+path = "src/lib.rs"
+crate-type = ["rlib", "staticlib"]
+
+[[bin]]
+name = "cadical"
+path = "src/bin/cadical.rs"
+
+[[bin]]
+name = "mobical"
+path = "src/bin/mobical.rs"
+
+[dependencies]
+libc = "0.2"
+
+[features]
+default = []
+# Mirrors the C++ '-DLOGGING' ('./configure -l'): compiles in the 'LOG'
+# statements and the 'log' / 'logsort' options.
+logging = []
+
+[profile.dev]
+opt-level = 1
+debug-assertions = true
+overflow-checks = true
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+debug = "line-tables-only"
+
+# Ports of the upstream API tests ('cadical/test/api/*.cpp') and contrib
+# tests ('cadical/test/contrib/*.cpp').  Like the C++ originals they are
+# stand-alone programs ('main' + 'assert'), so they run without the libtest
+# harness and print to the C 'stdout' stream exactly like the C++ tests (see
+# 'scripts/compare-api-tests.sh').
+
+[[test]]
+name = "api_newdelete"
+harness = false
+
+[[test]]
+name = "api_unit"
+harness = false
+
+[[test]]
+name = "api_morenmore"
+harness = false
+
+[[test]]
+name = "api_example"
+harness = false
+
+[[test]]
+name = "api_example_declare_one_more_variable"
+harness = false
+
+[[test]]
+name = "api_example_constraint"
+harness = false
+
+[[test]]
+name = "api_example_tracer"
+harness = false
+
+[[test]]
+name = "api_terminate"
+harness = false
+
+[[test]]
+name = "api_learn"
+harness = false
+
+[[test]]
+name = "api_traverse"
+harness = false
+
+[[test]]
+name = "api_incproof"
+harness = false
+
+[[test]]
+name = "api_propagate_assumptions"
+harness = false
+
+[[test]]
+name = "api_example_propagators"
+harness = false
+
+[[test]]
+name = "api_parcompwrite"
+harness = false
+
+[[test]]
+name = "api_apitrace"
+harness = false
+
+[[test]]
+name = "contrib_craigtracer"
+harness = false
+
+[[test]]
+name = "contrib_craigtracer_incremental"
+harness = false
