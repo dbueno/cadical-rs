@@ -317,7 +317,16 @@ def main():
     ap.add_argument("--drat-trim", default=f"{TOOLS}/drat-trim")
     ap.add_argument("--resume", action="store_true",
                     help="keep rows already in DIR/results.csv and only run the missing instances")
-    a = ap.parse_args()
+    # Allow `--solver-args "--foo=1"` (argparse would treat the value as an option).
+    argv, i = [], 0
+    while i < len(sys.argv) - 1:
+        i += 1
+        if sys.argv[i] == "--solver-args" and i + 1 < len(sys.argv):
+            argv.append("--solver-args=" + sys.argv[i + 1])
+            i += 1
+        else:
+            argv.append(sys.argv[i])
+    a = ap.parse_args(argv)
 
     a.solver = os.path.abspath(a.solver)
     a.out = os.path.abspath(a.out)
