@@ -315,6 +315,8 @@ def main():
     ap.add_argument("--dimocheck", default=f"{TOOLS}/dimocheck")
     ap.add_argument("--lrat-trim", default=f"{TOOLS}/lrat-trim")
     ap.add_argument("--drat-trim", default=f"{TOOLS}/drat-trim")
+    ap.add_argument("--resume", action="store_true",
+                    help="keep rows already in DIR/results.csv and only run the missing instances")
     a = ap.parse_args()
 
     a.solver = os.path.abspath(a.solver)
@@ -338,13 +340,25 @@ def main():
     runner = Runner(a)
     csv_path = os.path.join(a.out, "results.csv")
     rows = []
+    if a.resume and os.path.exists(csv_path):
+        with open(csv_path, newline="") as f:
+            rows = [r for r in csv.DictReader(f)
+                    if r.get("verdict") and r.get("status") != "HARNESS-ERROR"]
+        with open(csv_path, "w", newline="") as f:  # drop partial/errored rows
+            w = csv.DictWriter(f, fieldnames=FIELDS, extrasaction="ignore")
+            w.writeheader()
+            w.writerows(rows)
+        print(f"resume: {len(rows)} instances already done", flush=True)
+    done = {r["instance"] for r in rows}
+    todo = [(i, p) for i, p in enumerate(insts) if p not in done]
     t0 = time.monotonic()
-    with open(csv_path, "w", newline="") as fcsv:
-        w = csv.DictWriter(fcsv, fieldnames=FIELDS)
-        w.writeheader()
+    with open(csv_path, "a" if rows else "w", newline="") as fcsv:
+        w = csv.DictWriter(fcsv, fieldnames=FIELDS, extrasaction="ignore")
+        if not rows:
+            w.writeheader()
         with cf.ThreadPoolExecutor(a.jobs) as ex:
             futs = {ex.submit(runner.run, i, p, ref.get(os.path.realpath(p))): p
-                    for i, p in enumerate(insts)}
+                    for i, p in todo}
             for n, fut in enumerate(cf.as_completed(futs), 1):
                 p = futs[fut]
                 try:
@@ -356,7 +370,7 @@ def main():
                 w.writerow(row)
                 fcsv.flush()
                 flag = "" if row.get("verdict") == "ok" else "  <-- FAIL"
-                print(f"[{n}/{len(insts)} {time.monotonic() - t0:7.0f}s] {row.get('status', ''):8} "
+                print(f"[{n}/{len(todo)} {time.monotonic() - t0:7.0f}s] {row.get('status', ''):8} "
                       f"{row.get('wall', '')!s:>8}s model={row.get('model', '')} "
                       f"proof={row.get('proof', '')} stats={row.get('stats', '')} "
                       f"{os.path.basename(p)}{flag}", flush=True)

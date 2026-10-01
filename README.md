@@ -126,6 +126,31 @@ Exact behavioural equivalence with the C++ solver is the main oracle.
   `lrat-trim`), and compares statuses and search statistics with a
   reference run of the C++ solver.
 
+### Results (macOS / Apple Silicon, reference built by `nix build .#cadical-ref`)
+
+| Check | Result |
+|---|---|
+| upstream `cnf` / `usage` / `trace` suites | 282 / 35 / 79 ok, 0 failed (same counts as C++) |
+| upstream `mbt` + extra mobical fuzzing | 1,000 + 140,000 random traces, 0 failed |
+| ported API tests | 17/17 pass; stdout and written proof/trace files identical to C++ |
+| C API tests (`ctest`, `cfreeze`, `cipasir`) linked against the Rust staticlib | pass |
+| `test/cnf` head-to-head (default and 8 other configurations) | 85/85 identical statistics each |
+| SAT Competition 2022–2024 + anniversary track instances solved by the reference in ≤ 300 s | 1,453/1,453 same answer, identical conflicts/decisions/propagations |
+| SAT models (`dimocheck`) | 796/796 verified |
+| LRAT proofs (`lrat-trim`), UNSAT instances solved in < 30 s | 261/261 verified |
+| DRAT proofs (`drat-trim`), UNSAT instances solved in < 10 s | 217/217 verified |
+| speed, 40 instances of 20–120 s, interleaved runs | Rust/C++ wall time 1.006 |
+
+About 1,000 of the ~3,000 downloaded competition instances were not
+classified within the available time (the largest ones) and are not
+included above.
+
+While benchmarking we found an upstream out-of-bounds read in
+`tier.cpp` (`print_tier_usage_statistics` loops with
+`glue <= stats.used[stable].size ()`), which makes the hardened-libc++
+reference build trap (exit 133) while printing statistics after solving
+some instances. The Rust port reads 0 there instead.
+
 See `PORTING.md` for the porting conventions.
 
 ## License and credits
