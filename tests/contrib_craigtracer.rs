@@ -1,10 +1,10 @@
 //! Port of `cadical/test/contrib/craigtracer.cpp` (uses the Rust port of
-//! `contrib/craigtracer` in `tests/common/craigtracer.rs`).
+//! `contrib/craigtracer` in `src/craigtracer.rs`).
 
 mod common;
 
 use cadical::{Solver, UNSATISFIABLE};
-use common::craigtracer::{CraigCnfType, CraigClauseType, CraigConstruction, CraigInterpolant, CraigTracer, CraigVarType};
+use cadical::craigtracer::{CraigCnfType, CraigClauseType, CraigConstruction, CraigInterpolant, CraigTracer, CraigVarType};
 
 fn main() {
     let mut solver = Box::new(Solver::new());

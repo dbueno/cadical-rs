@@ -8,8 +8,9 @@
 //! `cadical.hpp`) plus the call-back traits.  Method names, integer status
 //! codes (`10` = SAT, `20` = UNSAT, `0` = unknown) and API contracts
 //! follow the C++ API; a few thin Rust conveniences are layered on top
-//! (see the [`solver`] module documentation).  All other modules are the
-//! solver internals: they are public for the tests and tools in this
+//! (see the [`solver`] module documentation).  Craig interpolation is
+//! provided by [`craigtracer`] (port of `contrib/craigtracer`).  All other
+//! modules are the solver internals: they are public for the tests and tools in this
 //! repository but are not a stable API.
 //!
 //! [CaDiCaL]: https://github.com/arminbiere/cadical
@@ -200,6 +201,12 @@
 //! assert_eq!(solver.model(), vec![-1, 2, -3]);
 //! ```
 //!
+//! # Craig interpolants
+//!
+//! [`craigtracer::CraigTracer`] is a proof tracer that computes Craig
+//! interpolants of an unsatisfiable A/B partition on the fly during
+//! solving; see the [`craigtracer`] module for an example.
+//!
 //! # Porting notes
 //!
 //! See `PORTING.md` for the porting conventions and `PORT_STATUS.md` for
@@ -251,6 +258,7 @@ pub mod collect;
 pub mod compact;
 pub mod condition;
 pub mod config;
+pub mod craigtracer;
 pub mod congruence;
 pub mod constrain;
 pub mod decide;

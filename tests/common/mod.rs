@@ -8,7 +8,6 @@
 
 #![allow(dead_code, unused_macros, unused_imports)]
 
-pub mod craigtracer;
 
 use std::path::PathBuf;
 

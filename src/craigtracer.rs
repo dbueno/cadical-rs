@@ -2,11 +2,73 @@
 // Copyright 2013 Stefan Kupferschmid
 // Copyright 2023 Florian Pollitt
 // Copyright 2023 Tobias Faller
-//
-// Rust port of 'cadical/contrib/craigtracer.{hpp,cpp}' (CaDiCraig): a
-// proof tracer building Craig interpolants.  In Rust it is a client of the
-// public 'Tracer' trait (it needs nothing beyond it).
-//
+
+//! Craig interpolation (port of `cadical/contrib/craigtracer.{hpp,cpp}`,
+//! CaDiCraig).
+//!
+//! [`CraigTracer`] is a proof tracer that builds partial Craig
+//! interpolants for every clause while the solver runs, from the
+//! resolution chains of derived clauses.  After an unsatisfiable `solve`
+//! the interpolant is available right away (no proof file is written or
+//! replayed).  Interpolants are built as And-Inverter-Graphs and
+//! [`CraigTracer::create_craig_interpolant`] turns them into CNF with
+//! Tseitin variables.  Symmetric, asymmetric, their duals and
+//! combinations (intersection, union, smallest, largest) are supported,
+//! as are assumptions, constraints and incremental solving.
+//!
+//! Requirements (as in C++):
+//!
+//! * connect the tracer with antecedents (`connect(&mut solver, true)`),
+//! * disable bounded variable addition (`solver.set("factor", 0)`), which
+//!   introduces variables and clauses outside the A/B labelling,
+//! * call [`CraigTracer::set_craig_construction`] before adding clauses,
+//! * label every variable ([`CraigTracer::label_variable`]) and every
+//!   original clause ([`CraigTracer::label_clause`], clause ids count
+//!   from `1` in the order clauses are added) *before* adding it.
+//!
+//! Violating these requirements panics (C++ `assert`).
+//!
+//! ```
+//! use cadical::craigtracer::{
+//!     CraigCnfType, CraigClauseType, CraigConstruction, CraigInterpolant, CraigTracer,
+//!     CraigVarType,
+//! };
+//! use cadical::Solver;
+//!
+//! let mut solver = Solver::new();
+//! solver.set("factor", 0);
+//! let (tracer, tracer_ref) = CraigTracer::connect(&mut solver, true);
+//! tracer.borrow_mut().set_craig_construction(CraigConstruction::ASYMMETRIC);
+//!
+//! // A = (x1) & (-x1 | x2),  B = (-x2): the interpolant is x2.
+//! tracer.borrow_mut().label_variable(1, CraigVarType::ALocal);
+//! tracer.borrow_mut().label_variable(2, CraigVarType::Global);
+//! tracer.borrow_mut().label_clause(1, CraigClauseType::AClause);
+//! tracer.borrow_mut().label_clause(2, CraigClauseType::AClause);
+//! tracer.borrow_mut().label_clause(3, CraigClauseType::BClause);
+//! solver.clause(&[1]);
+//! solver.clause(&[-1, 2]);
+//! solver.clause(&[-2]);
+//! assert!(solver.solve_result().is_unsat());
+//!
+//! let mut cnf = Vec::new();
+//! let mut next_var = 3; // first free variable for Tseitin encoding
+//! let kind = tracer.borrow_mut().create_craig_interpolant(
+//!     CraigInterpolant::Asymmetric,
+//!     &mut cnf,
+//!     &mut next_var,
+//! );
+//! assert_eq!(kind, CraigCnfType::Normal);
+//! assert_eq!(cnf, vec![vec![2]]);
+//!
+//! solver.disconnect_proof_tracer(tracer_ref);
+//! ```
+//!
+//! The solver owns the connected tracer; [`CraigTracer::connect`] connects
+//! a clone of an `Rc<RefCell<CraigTracer>>` so that the caller keeps
+//! access for labelling and querying.  Do not hold a `borrow_mut` of it
+//! across solver calls (the solver calls into the tracer).
+
 // Porting notes:
 // * 'CraigData *' (nullable, owned) -> 'Option<CraigData>' ('CraigData'
 //   is a small 'Copy' struct).  The one place where C++ keeps a pointer
@@ -18,12 +80,11 @@
 // * The C++ user keeps a 'CraigTracer *' after 'connect_proof_tracer' to
 //   label variables / clauses and to query the interpolant.  With the Rust
 //   API the solver owns the connected tracer, so the user shares it
-//   through 'Rc<RefCell<CraigTracer>>' and connects a [`SharedTracer`]
-//   forwarding wrapper (see [`CraigTracer::connect`]).
+//   through 'Rc<RefCell<CraigTracer>>', for which the library implements
+//   'Tracer' (see 'CraigTracer::connect').
 
-#![allow(dead_code)]
-
-use cadical::{ConclusionType, Solver, Tracer, TracerRef};
+use crate::solver::Solver;
+use crate::tracer::{ConclusionType, Tracer, TracerRef};
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::rc::Rc;
@@ -439,7 +500,7 @@ impl CraigTracer {
     /// handle needed for `disconnect_proof_tracer`.
     pub fn connect(solver: &mut Solver, antecedents: bool) -> (Rc<RefCell<CraigTracer>>, TracerRef) {
         let tracer = Rc::new(RefCell::new(CraigTracer::new()));
-        let r = solver.connect_proof_tracer(Box::new(SharedTracer(tracer.clone())), antecedents, false);
+        let r = solver.connect_proof_tracer(Box::new(tracer.clone()), antecedents, false);
         (tracer, r)
     }
 
@@ -1105,68 +1166,5 @@ impl Tracer for CraigTracer {
         };
 
         self.craig_interpolant = Some(interpolant);
-    }
-}
-
-/// Forwards all `Tracer` events to a shared `Rc<RefCell<T>>`, so that the
-/// user can keep access to a tracer owned by the solver.  (Due to the
-/// orphan rule this newtype is needed in user code; see the API notes for
-/// a proposal to provide it in the library.)
-pub struct SharedTracer<T: Tracer>(pub Rc<RefCell<T>>);
-
-impl<T: Tracer> Tracer for SharedTracer<T> {
-    fn add_original_clause(&mut self, id: i64, redundant: bool, clause: &[i32], restored: bool) {
-        self.0.borrow_mut().add_original_clause(id, redundant, clause, restored)
-    }
-    fn add_derived_clause(&mut self, id: i64, redundant: bool, witness: i32, clause: &[i32], chain: &[i64]) {
-        self.0.borrow_mut().add_derived_clause(id, redundant, witness, clause, chain)
-    }
-    fn delete_clause(&mut self, id: i64, redundant: bool, clause: &[i32]) {
-        self.0.borrow_mut().delete_clause(id, redundant, clause)
-    }
-    fn demote_clause(&mut self, id: u64, clause: &[i32]) {
-        self.0.borrow_mut().demote_clause(id, clause)
-    }
-    fn weaken_minus(&mut self, id: i64, clause: &[i32]) {
-        self.0.borrow_mut().weaken_minus(id, clause)
-    }
-    fn strengthen(&mut self, id: i64) {
-        self.0.borrow_mut().strengthen(id)
-    }
-    fn report_status(&mut self, status: i32, id: i64) {
-        self.0.borrow_mut().report_status(status, id)
-    }
-    fn finalize_clause(&mut self, id: i64, clause: &[i32]) {
-        self.0.borrow_mut().finalize_clause(id, clause)
-    }
-    fn begin_proof(&mut self, reserved_ids: i64) {
-        self.0.borrow_mut().begin_proof(reserved_ids)
-    }
-    fn solve_query(&mut self) {
-        self.0.borrow_mut().solve_query()
-    }
-    fn add_assumption(&mut self, lit: i32) {
-        self.0.borrow_mut().add_assumption(lit)
-    }
-    fn add_constraint(&mut self, clause: &[i32]) {
-        self.0.borrow_mut().add_constraint(clause)
-    }
-    fn reset_assumptions(&mut self) {
-        self.0.borrow_mut().reset_assumptions()
-    }
-    fn add_assumption_clause(&mut self, id: i64, clause: &[i32], chain: &[i64]) {
-        self.0.borrow_mut().add_assumption_clause(id, clause, chain)
-    }
-    fn conclude_unsat(&mut self, conclusion: ConclusionType, ids: &[i64]) {
-        self.0.borrow_mut().conclude_unsat(conclusion, ids)
-    }
-    fn conclude_sat(&mut self, model: &[i32]) {
-        self.0.borrow_mut().conclude_sat(model)
-    }
-    fn conclude_unknown(&mut self, trail: &[i32]) {
-        self.0.borrow_mut().conclude_unknown(trail)
-    }
-    fn notify_equivalence(&mut self, lit: i32, other: i32) {
-        self.0.borrow_mut().notify_equivalence(lit, other)
     }
 }

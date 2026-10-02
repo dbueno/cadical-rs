@@ -97,6 +97,14 @@ cargo run --release --example learner -- 7 p.drat # call-backs, termination, pro
 The C API (`ccadical_*`) and IPASIR (`ipasir_*`) functions are exported by
 the static library `target/release/libcadical.a`.
 
+Craig interpolants: the module `cadical::craigtracer` is a port of
+CaDiCraig (`cadical/contrib/craigtracer`, dual-licensed MIT / Apache-2.0
+upstream). `CraigTracer::connect(&mut solver, true)` attaches it as a proof
+tracer; after labelling variables and clauses as A / B / global and an
+unsatisfiable `solve`, `create_craig_interpolant` returns the (symmetric,
+asymmetric, dual, ...) interpolant as CNF. Disable BVA with
+`solver.set("factor", 0)`. See the module documentation for an example.
+
 All other public modules are the solver internals, exposed for the tests
 and tools in this repository. They are not a stable API.
 
