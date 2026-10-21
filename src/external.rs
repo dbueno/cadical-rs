@@ -792,6 +792,52 @@ impl External {
         self.propagator.as_mut().unwrap().notify_assignment(&assigned);
     }
 
+    // A variable weakened by variable elimination (or any other technique which
+    // pushes witness literals on the extension stack) can not be observed right
+    // away: the external propagator would see assignments of a variable which is
+    // not fully constrained by the clauses currently in the solver, since some of
+    // its clauses only live on the extension stack.
+    //
+    // Tainting both phases forces 'restore_clauses' to restore every weakened
+    // clause which has this variable as witness literal, after which the variable
+    // is clean and may be observed.  This implements the 'TODO' in
+    // 'add_observed_var' above.
+    //
+    // Restoring requires root level, therefore 'Solver::add_observed_var' only
+    // calls this when not solving.
+    #[cfg(feature = "bitwuzla")]
+    pub fn restore_before_observing(&mut self, elit: i32) {
+        debug_assert!(self.propagator.is_some()); // REQ is in Solver::add_observed_var
+        debug_assert!(elit != 0);
+        debug_assert!(elit != i32::MIN);
+
+        let eidx = elit.abs();
+        if eidx > self.max_var {
+            return;
+        }
+        if !self.marked(&self.witness, elit) && !self.marked(&self.witness, -elit) {
+            return;
+        }
+
+        log!(self, "restoring clauses of weakened variable {} before observing it", eidx);
+        self.reset_extended(); // tainting!
+
+        if self.internal().level != 0 {
+            self.internal().backtrack(0);
+        }
+
+        // 'internalize' taints a literal if its negation occurs as witness literal
+        // on the extension stack, and reactivates it if necessary.  Internalizing
+        // both phases therefore taints exactly the phases needed to restore all
+        // clauses witnessed by this variable.
+        self.internalize(elit, false);
+        self.internalize(-elit, false);
+
+        let _ = self.internal().restore_clauses();
+
+        debug_assert!(!self.marked(&self.witness, elit) && !self.marked(&self.witness, -elit));
+    }
+
     pub fn remove_observed_var(&mut self, elit: i32) {
         debug_assert!(self.propagator.is_some()); // REQ is in Solver::remove_observed_var
 

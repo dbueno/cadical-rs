@@ -2571,6 +2571,13 @@ impl Solver {
             self.external().propagator.is_some(),
             "can not observe variables without a connected propagator"
         );
+        // Restoring the clauses of a variable weakened by variable elimination
+        // requires root level and thus can not be done from within a propagator
+        // callback, i.e., while solving.
+        #[cfg(feature = "bitwuzla")]
+        if self.state() != SOLVING {
+            self.external().restore_before_observing(idx);
+        }
         self.external().add_observed_var(idx);
         self.log_end_i("observe", idx);
     }

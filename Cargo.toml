@@ -33,6 +33,11 @@ default = []
 # Mirrors the C++ '-DLOGGING' ('./configure -l'): compiles in the 'LOG'
 # statements and the 'log' / 'logsort' options.
 logging = []
+# Bitwuzla's patch 'restore-clauses-before-observing-weakened-var'
+# (bitwuzla/subprojects/packagefiles/cadical/0001-*.patch): observing a
+# variable weakened by elimination first restores its clauses instead of
+# violating the API contract.
+bitwuzla = []
 
 [profile.dev]
 opt-level = 1
